@@ -16,17 +16,27 @@ public class SqueezeBoxHandler extends TextWebSocketHandler {
     private final TokenRegistry tokens;
     private final SessionRegistry sessions;
     private final PendingRequests pending;
+    private final YandexUserResolver userResolver;
 
-    public SqueezeBoxHandler(TokenRegistry tokens, SessionRegistry sessions, PendingRequests pending) {
+    public SqueezeBoxHandler(TokenRegistry tokens, SessionRegistry sessions, PendingRequests pending,
+                             YandexUserResolver userResolver) {
         this.tokens = tokens;
         this.sessions = sessions;
         this.pending = pending;
+        this.userResolver = userResolver;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         String token = extractBearer(session);
         String uid = tokens.uidByToken(token);
+        if (uid == null) {
+            // instanceToken неизвестен: сервер перезапускался и потерял in-memory реестр.
+            // Принимаем Яндекс access_token клиента (тот же резолв, что и при маршрутизации
+            // запросов) — uid совпадает, клиенту не нужна переавторизация.
+            uid = userResolver.uidByAccessToken(token);
+            if (uid != null) log.info("WS AUTH: instanceToken unknown, resolved by yandex access_token -> uid={}", uid);
+        }
         if (uid == null) {
             session.close(new CloseStatus(1008, "invalid token"));
             return;

@@ -22,6 +22,7 @@ import java.util.Map;
 public class InfoController {
 
     private final TokenRegistry tokens;
+    private final YandexUserResolver userResolver;
 
     @Value("${info.skill-id:}")
     private String skillId;
@@ -32,8 +33,9 @@ public class InfoController {
     @Value("${info.tts-api-key:}")
     private String ttsApiKey;
 
-    public InfoController(TokenRegistry tokens) {
+    public InfoController(TokenRegistry tokens, YandexUserResolver userResolver) {
         this.tokens = tokens;
+        this.userResolver = userResolver;
     }
 
     @GetMapping("/info")
@@ -42,7 +44,12 @@ public class InfoController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "no bearer token"));
         }
         String token = auth.substring("Bearer ".length()).trim();
-        if (tokens.uidByToken(token) == null) {
+        String uid = tokens.uidByToken(token);
+        if (uid == null) {
+            // как в WS: instanceToken мог потеряться при рестарте сервера — принимаем Яндекс access_token
+            uid = userResolver.uidByAccessToken(token);
+        }
+        if (uid == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "invalid token"));
         }
 
